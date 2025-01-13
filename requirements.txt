@@ -1,5 +1,8 @@
-pyautogen>=0.2.0
-requests>=2.31.0
-pyyaml>=6.0.1
-typings>=0.1.0
-watchdog>=3.0.0
+autogen
+requests
+pyyaml
+typings
+watchdog
+scikit-learn
+pandas 
+numpy
