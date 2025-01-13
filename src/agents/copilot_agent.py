@@ -5,13 +5,14 @@ import json
 from typing import Dict, Optional
 
 class CopilotAgent(AssistantAgent):
-    def __init__(self, direct_line_secret: str, **kwargs):
+    def __init__(self, direct_line_secret: str, user_token: Optional[str] = None, **kwargs):
         super().__init__(**kwargs)
         self.base_url = "https://directline.botframework.com/v3/directline"
         self.secret = direct_line_secret
         self.conversation_id = None
         self.token = None
         self.watermark = None
+        self.user_token = user_token
         
     async def _init_conversation(self):
         """Initialize a new conversation with Direct Line"""
@@ -58,7 +59,7 @@ class CopilotAgent(AssistantAgent):
                 "Content-Type": "application/json"
             }
             
-            # Send message
+            # Prepare message with user token if available
             activity = {
                 "type": "message",
                 "text": message,
@@ -69,6 +70,14 @@ class CopilotAgent(AssistantAgent):
                 "locale": "en-US",
                 "textFormat": "plain"
             }
+            
+            # Add user token if available
+            if self.user_token:
+                activity["entities"] = [{
+                    "type": "https://schema.org/thing",
+                    "name": "UserToken",
+                    "token": self.user_token
+                }]
             
             print(f"Sending message: {json.dumps(activity, indent=2)}")
             
@@ -98,17 +107,29 @@ class CopilotAgent(AssistantAgent):
             if 'watermark' in activities_data:
                 self.watermark = activities_data['watermark']
             
+            # Check for authentication request
+            for activity in activities_data.get("activities", []):
+                if activity.get("attachments"):
+                    for attachment in activity["attachments"]:
+                        if attachment.get("contentType") == "application/vnd.microsoft.card.oauth":
+                            signin_url = attachment["content"]["buttons"][0]["value"]
+                            return f"Authentication required. Please visit: {signin_url}"
+            
             # Filter bot responses
             bot_responses = [
                 activity["text"] 
                 for activity in activities_data.get("activities", [])
                 if activity.get("from", {}).get("role") == "bot"
+                and "text" in activity
             ]
             
-            return bot_responses[-1] if bot_responses else "No response received"
+            if not bot_responses:
+                return "No response received"
+                
+            return bot_responses[-1]
             
-        except requests.exceptions.RequestException as e:
+        except Exception as e:
             print(f"Error in generate_response: {str(e)}")
-            if hasattr(e.response, 'text'):
+            if hasattr(e, 'response') and hasattr(e.response, 'text'):
                 print(f"Response content: {e.response.text}")
             return f"Error communicating with Copilot: {str(e)}"
