@@ -69,23 +69,6 @@ copilot:
 python examples/basic_swarm.py
 ```
 
-## Configuration
-
-The `CopilotAgent` class can be configured with various parameters:
-
-```python
-copilot_agent = CopilotAgent(
-    endpoint_url="your_endpoint_url",
-    auth_token="your_auth_token",
-    name="CopilotAssistant",
-    max_consecutive_auto_reply=10,
-    custom_parameters={
-        "temperature": 0.7,
-        "max_tokens": 1000
-    }
-)
-```
-
 ## Contributing
 
 1. Fork the repository
