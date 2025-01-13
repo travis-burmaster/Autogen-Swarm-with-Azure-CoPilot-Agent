@@ -1,12 +1,5 @@
-
-import asyncio
-import sys
-import os
-
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 import yaml
-from autogen import UserProxyAgent, AssistantAgent, GroupChat, GroupChatManager
+from autogen import UserProxyAgent, GroupChat, GroupChatManager, AssistantAgent
 from src.agents.copilot_agent import CopilotAgent
 
 # Load configuration
@@ -19,46 +12,44 @@ copilot_agent = CopilotAgent(
     name="CopilotAssistant"
 )
 
-# Function to initiate chat and capture response
-async def initiate_and_get_response():
+# Create other agents
+user_proxy = UserProxyAgent(
+    name="User",
+    system_message="A human user"
+)
+
+code_agent = AssistantAgent(
+    name="Coder",
+    system_message="Expert programmer who writes code"
+)
+
+# Create group chat
+groupchat = GroupChat(
+    agents=[user_proxy, copilot_agent, code_agent],
+    messages=[],
+    max_round=12
+)
+
+# Create manager
+manager = GroupChatManager(
+    groupchat=groupchat,
+    system_message="You are a helpful coordinator"
+)
+
+# Test the Copilot agent directly first
+async def test_copilot():
     try:
-        # Use the generate_response method instead of _oai_messages
-        response = await copilot_agent.generate_response(
-            "Can you tell me the PTO policy at Northramp?"
-        )
-        return response
+        response = await copilot_agent.generate_response("Hello, how are you?")
+        print(f"Response from Copilot Agent: {response}")
     except Exception as e:
-        print(f"Error: {e}")
-        return None
+        print(f"Error: {str(e)}")
 
 # Start the conversation
 if __name__ == "__main__":
-    # Use asyncio to run the asynchronous function
-    #loop = asyncio.get_event_loop()
-    result = asyncio.run(initiate_and_get_response())
-    print("Response from Copilot Agent:", result)
-
-
-    # Create other agents
-# user_proxy = UserProxyAgent(
-#     name="User",
-#     system_message="A human user"
-# )
-# # Create group chat
-# groupchat = GroupChat(
-#     agents=[copilot_agent],
-#     messages=[],
-#     max_round=12
-# )
-
-# # Create manager
-
-# manager = GroupChatManager(
-#     groupchat=groupchat,
-#     system_message="You are a helpful coordinator"
-# )
-
-# code_agent = AssistantAgent(
-#     name="Coder",
-#     system_message="Expert programmer who writes code"
-# )
+    import asyncio
+    asyncio.run(test_copilot())
+    # Uncomment below to run the full group chat
+    # user_proxy.initiate_chat(
+    #     manager,
+    #     message="Let's solve this problem..."
+    # )
