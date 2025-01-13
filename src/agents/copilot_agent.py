@@ -5,128 +5,60 @@ import json
 from typing import Dict, Optional
 
 class CopilotAgent(AssistantAgent):
-    def __init__(self, direct_line_secret: str, user_token: Optional[str] = None, **kwargs):
+    def __init__(self, api_key: str, region: str, environment_id: str, **kwargs):
         super().__init__(**kwargs)
-        self.base_url = "https://directline.botframework.com/v3/directline"
-        self.secret = direct_line_secret
-        self.conversation_id = None
-        self.token = None
-        self.watermark = None
-        self.user_token = user_token
+        self.base_url = f"https://{region}.microsoft.com/powervirtualagents/v1/environments/{environment_id}"
+        self.headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+        self.session_id = None
         
-    async def _init_conversation(self):
-        """Initialize a new conversation with Direct Line"""
+    async def _init_session(self):
+        """Initialize a new session"""
         try:
-            # Generate token
-            headers = {
-                "Authorization": f"Bearer {self.secret}"
-            }
             response = requests.post(
-                f"{self.base_url}/tokens/generate",
-                headers=headers
+                f"{self.base_url}/sessions",
+                headers=self.headers,
+                json={}
             )
             response.raise_for_status()
-            token_data = response.json()
-            print(f"Token response: {json.dumps(token_data, indent=2)}")
-            self.token = token_data["token"]
-            
-            # Start conversation
-            headers = {
-                "Authorization": f"Bearer {self.token}"
-            }
-            response = requests.post(
-                f"{self.base_url}/conversations",
-                headers=headers
-            )
-            response.raise_for_status()
-            conv_data = response.json()
-            print(f"Conversation start response: {json.dumps(conv_data, indent=2)}")
-            self.conversation_id = conv_data["conversationId"]
+            session_data = response.json()
+            print(f"Session response: {json.dumps(session_data, indent=2)}")
+            self.session_id = session_data.get('session_id')
             
         except requests.exceptions.RequestException as e:
-            print(f"Error in _init_conversation: {str(e)}")
+            print(f"Error in _init_session: {str(e)}")
             if hasattr(e.response, 'text'):
                 print(f"Response content: {e.response.text}")
             raise
         
     async def generate_response(self, message: str) -> str:
         try:
-            if not self.conversation_id:
-                await self._init_conversation()
+            if not self.session_id:
+                await self._init_session()
                 
-            headers = {
-                "Authorization": f"Bearer {self.token}",
-                "Content-Type": "application/json"
-            }
-            
-            # Prepare message with user token if available
-            activity = {
-                "type": "message",
-                "text": message,
-                "from": {
-                    "id": "user",
-                    "name": "User"
-                },
-                "locale": "en-US",
-                "textFormat": "plain"
-            }
-            
-            # Add user token if available
-            if self.user_token:
-                activity["entities"] = [{
-                    "type": "https://schema.org/thing",
-                    "name": "UserToken",
-                    "token": self.user_token
-                }]
-            
-            print(f"Sending message: {json.dumps(activity, indent=2)}")
-            
+            # Send message
             response = requests.post(
-                f"{self.base_url}/conversations/{self.conversation_id}/activities",
-                headers=headers,
-                json=activity
+                f"{self.base_url}/sessions/{self.session_id}/messages",
+                headers=self.headers,
+                json={
+                    "message": message
+                }
             )
             response.raise_for_status()
-            send_data = response.json()
-            print(f"Send message response: {json.dumps(send_data, indent=2)}")
+            message_data = response.json()
+            print(f"Message response: {json.dumps(message_data, indent=2)}")
             
-            # Wait a moment for the bot to process
-            time.sleep(2)
-            
-            # Get response with watermark if available
-            url = f"{self.base_url}/conversations/{self.conversation_id}/activities"
-            if self.watermark:
-                url += f"?watermark={self.watermark}"
-            
-            response = requests.get(url, headers=headers)
-            response.raise_for_status()
-            activities_data = response.json()
-            print(f"Get activities response: {json.dumps(activities_data, indent=2)}")
-            
-            # Update watermark
-            if 'watermark' in activities_data:
-                self.watermark = activities_data['watermark']
-            
-            # Check for authentication request
-            for activity in activities_data.get("activities", []):
-                if activity.get("attachments"):
-                    for attachment in activity["attachments"]:
-                        if attachment.get("contentType") == "application/vnd.microsoft.card.oauth":
-                            signin_url = attachment["content"]["buttons"][0]["value"]
-                            return f"Authentication required. Please visit: {signin_url}"
-            
-            # Filter bot responses
+            # Extract bot response
+            messages = message_data.get('messages', [])
             bot_responses = [
-                activity["text"] 
-                for activity in activities_data.get("activities", [])
-                if activity.get("from", {}).get("role") == "bot"
-                and "text" in activity
+                msg['text'] 
+                for msg in messages 
+                if msg.get('sender') == 'bot' and 'text' in msg
             ]
             
-            if not bot_responses:
-                return "No response received"
-                
-            return bot_responses[-1]
+            return bot_responses[-1] if bot_responses else "No response received"
             
         except Exception as e:
             print(f"Error in generate_response: {str(e)}")
